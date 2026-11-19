@@ -1,0 +1,10 @@
+{
+    "name": "alvora-erpnext-link",
+    "version": "0.1.0",
+    "description": "Connect a client organization to its ERPNext site from the AlvoraVector admin console",
+    "repository": "https://github.com/surbhigoyal7381-agent/alvora-erpnext-link",
+    "license": "AGPL-3.0-or-later",
+    "author": "Alvora",
+    "engine": "package.json",
+    "api": "composer.json"
+}

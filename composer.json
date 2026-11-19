@@ -1,0 +1,60 @@
+{
+    "name": "alvora/erpnext-link",
+    "version": "0.1.0",
+    "description": "Connect a client organization to its ERPNext site from the AlvoraVector admin console",
+    "keywords": [
+        "fleetbase",
+        "fleetbase-extension",
+        "erpnext"
+    ],
+    "license": "AGPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Alvora"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "fleetbase/core-api": "^2.0",
+        "guzzlehttp/guzzle": "^7.0.1"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.34.1",
+        "laravel/framework": "^12.69",
+        "nunomaduro/collision": "^8.0",
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Alvora\\ErpnextLink\\": "server/src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Alvora\\ErpnextLink\\Tests\\": "server/tests/"
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Alvora\\ErpnextLink\\Providers\\ErpnextLinkServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "vendor-dir": "./server_vendor",
+        "sort-packages": true,
+        "preferred-install": "dist"
+    },
+    "scripts": {
+        "lint": "php-cs-fixer fix -v",
+        "test:lint": "php-cs-fixer fix -v --dry-run",
+        "test:unit": "phpunit --colors=always",
+        "test": [
+            "@test:lint",
+            "@test:unit"
+        ]
+    }
+}
