@@ -1,0 +1,147 @@
+<section class="rounded-md border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:p-6" aria-labelledby={{this.headingId}} data-test-erpnext-tab>
+    {{#if this.loadFailed}}
+        <div role="alert" class="text-sm text-gray-700 dark:text-gray-200" data-test-load-failed>
+            <p>{{t "alvora-erpnext-link.load-failed"}}</p>
+            <button type="button" class="mt-2 rounded border border-gray-300 px-3 py-1 text-sm dark:border-gray-600" {{on "click" this.retry}}>{{t "alvora-erpnext-link.retry"}}</button>
+        </div>
+    {{else if this.status}}
+        <header class="flex items-start justify-between gap-4">
+            <div>
+                <h2 id={{this.headingId}} tabindex="-1" class="text-lg font-semibold text-gray-900 dark:text-white">{{t this.headingKey host=this.host}}</h2>
+                {{#if this.showSub}}
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.form.sub"}}</p>
+                {{/if}}
+            </div>
+            <span class="shrink-0 rounded-full border px-3 py-1 text-xs font-medium {{this.badgeClass}}" data-test-badge>
+                <span aria-hidden="true">{{this.badgeGlyph}}</span>
+                {{t this.badgeKey}}
+            </span>
+        </header>
+
+        {{#if this.problemAlert}}
+            <div role="alert" class="mt-4 rounded border border-amber-600 p-3 text-sm text-gray-900 dark:text-gray-100" data-test-problem={{this.problemAlert.code}}>
+                <p class="font-semibold">{{this.problemAlert.title}}</p>
+                <p class="mt-1">{{this.problemAlert.body}}</p>
+                <ul class="mt-2 list-disc pl-5">
+                    {{#each this.problemAlert.todo as |item|}}<li>{{item}}</li>{{/each}}
+                </ul>
+            </div>
+        {{/if}}
+
+        {{#if this.showForm}}
+            <p class="mt-4 rounded border border-gray-200 p-3 text-sm text-gray-700 dark:border-gray-600 dark:text-gray-200" data-test-before-you-start>
+                {{#if this.replacing}}{{t "alvora-erpnext-link.form.replace-note"}}{{else}}{{t "alvora-erpnext-link.form.before-you-start"}}{{/if}}
+            </p>
+            {{! template-lint-disable no-unsupported-role-attributes }}
+            <form class="mt-4 space-y-4" novalidate {{on "submit" this.connect}}>
+                <div>
+                    <label for="erpnext-address" class="block text-sm font-medium text-gray-900 dark:text-white">{{t "alvora-erpnext-link.form.address"}}</label>
+                    <input id="erpnext-address" type="text" autocomplete="off" value={{this.address}} aria-describedby="erpnext-address-hint erpnext-address-error" aria-invalid={{if this.errors.address "true" "false"}} class="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-900" {{on "input" (fn this.update "address")}} />
+                    <p id="erpnext-address-hint" class="mt-1 text-xs text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.form.address-hint"}}</p>
+                    <p id="erpnext-address-error" class="mt-1 text-xs text-red-700 dark:text-red-400" data-test-error="address">{{this.errors.address}}</p>
+                </div>
+                <div>
+                    <label for="erpnext-apiKey" class="block text-sm font-medium text-gray-900 dark:text-white">{{t "alvora-erpnext-link.form.key"}}</label>
+                    <input id="erpnext-apiKey" type="text" autocomplete="off" value={{this.apiKey}} aria-describedby="erpnext-apiKey-error" aria-invalid={{if this.errors.apiKey "true" "false"}} class="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-900" {{on "input" (fn this.update "apiKey")}} />
+                    <p id="erpnext-apiKey-error" class="mt-1 text-xs text-red-700 dark:text-red-400" data-test-error="apiKey">{{this.errors.apiKey}}</p>
+                </div>
+                <div>
+                    <label for="erpnext-apiSecret" class="block text-sm font-medium text-gray-900 dark:text-white">{{t "alvora-erpnext-link.form.secret"}}</label>
+                    <input id="erpnext-apiSecret" type="password" autocomplete="off" value={{this.apiSecret}} aria-describedby="erpnext-apiSecret-hint erpnext-apiSecret-error" aria-invalid={{if this.errors.apiSecret "true" "false"}} class="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-900" {{on "input" (fn this.update "apiSecret")}} />
+                    <p id="erpnext-apiSecret-hint" class="mt-1 text-xs text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.form.secret-hint"}}</p>
+                    <p id="erpnext-apiSecret-error" class="mt-1 text-xs text-red-700 dark:text-red-400" data-test-error="apiSecret">{{this.errors.apiSecret}}</p>
+                </div>
+                <div class="flex gap-3">
+                    <button type="submit" class="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white" data-test-connect>{{if this.replacing (t "alvora-erpnext-link.form.replace") (t "alvora-erpnext-link.form.connect")}}</button>
+                    {{#if this.formOpen}}
+                        <button type="button" class="rounded border border-gray-300 px-4 py-2 text-sm dark:border-gray-600" data-test-cancel {{on "click" this.cancelForm}}>{{t "alvora-erpnext-link.form.cancel"}}</button>
+                    {{/if}}
+                </div>
+            </form>
+        {{else if this.showSteps}}
+            <p class="mt-4 text-sm text-gray-700 dark:text-gray-200">{{t "alvora-erpnext-link.connecting.sub"}}</p>
+            <ol class="mt-4 space-y-3" aria-live="polite" data-test-steps>
+                {{#each this.steps as |step|}}
+                    <li class="text-sm" data-test-step={{step.number}} data-test-step-state={{step.state}}>
+                        <span class="font-medium text-gray-900 dark:text-white">{{step.number}}. {{t (concat "alvora-erpnext-link.step." step.number ".title")}}</span>
+                        <span class="ml-2 rounded border border-gray-400 px-2 text-xs text-gray-800 dark:text-gray-200">{{t (concat "alvora-erpnext-link.step-state." step.state)}}</span>
+                        <span class="block text-xs text-gray-600 dark:text-gray-300">{{t (concat "alvora-erpnext-link.step." step.number ".why")}}</span>
+                        {{#if step.working}}
+                            <span class="block text-xs text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.connecting.waiting" host=this.host}}</span>
+                        {{/if}}
+                    </li>
+                {{/each}}
+            </ol>
+            <p class="mt-4 text-xs text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.connecting.footer"}}</p>
+        {{else}}
+            {{#if this.alert}}
+                <div role="alert" class="mt-4 rounded border border-amber-600 p-3 text-sm text-gray-900 dark:text-gray-100" data-test-alert={{this.alert.code}}>
+                    <p id="{{this.headingId}}-alert" tabindex="-1" class="font-semibold">{{this.alert.title}}</p>
+                    <p class="mt-1">{{this.alert.body}}</p>
+                    {{#if this.previousKept}}<p class="mt-1">{{t "alvora-erpnext-link.attention.previous-kept"}}</p>{{/if}}
+                    <p class="mt-2 font-medium">{{t "alvora-erpnext-link.attention.what-to-do"}}</p>
+                    <ul class="mt-1 list-disc pl-5">
+                        {{#each this.alert.todo as |item|}}<li>{{item}}</li>{{/each}}
+                    </ul>
+                </div>
+                <ol class="mt-4 space-y-2" aria-live="polite" data-test-steps>
+                    {{#each this.steps as |step|}}
+                        <li class="text-sm" data-test-step={{step.number}} data-test-step-state={{step.state}}>
+                            {{step.number}}. {{t (concat "alvora-erpnext-link.step." step.number ".title")}}
+                            <span class="ml-2 rounded border border-gray-400 px-2 text-xs text-gray-800 dark:text-gray-200">{{t (concat "alvora-erpnext-link.step-state." step.state)}}</span>
+                        </li>
+                    {{/each}}
+                </ol>
+            {{/if}}
+            <dl class="mt-4 divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                <div class="flex justify-between gap-4 py-2"><dt class="text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.rows.site"}}</dt><dd class="text-gray-900 dark:text-white" data-test-host>{{this.host}}</dd></div>
+                {{#if this.isConnected}}
+                    <div class="flex justify-between gap-4 py-2"><dt class="text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.rows.since"}}</dt><dd class="text-gray-900 dark:text-white">{{this.connectedAt}}</dd></div>
+                    <div class="flex justify-between gap-4 py-2"><dt class="text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.rows.last-test"}}</dt><dd class="text-gray-900 dark:text-white" data-test-last-test>{{this.lastTest}}</dd></div>
+                    <div class="flex justify-between gap-4 py-2"><dt class="text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.rows.keys"}}</dt><dd class="text-gray-900 dark:text-white">{{t "alvora-erpnext-link.connected.keys"}}</dd></div>
+                {{else}}
+                    <div class="flex justify-between gap-4 py-2"><dt class="text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.rows.last-attempt"}}</dt><dd class="text-gray-900 dark:text-white">{{this.lastAttempt}}</dd></div>
+                {{/if}}
+            </dl>
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+                {{#if this.isConnected}}
+                    <button type="button" class="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60" disabled={{this.isTesting}} data-test-send-test {{on "click" this.sendTest}}>{{if this.isTesting (t "alvora-erpnext-link.connected.sending") (t "alvora-erpnext-link.connected.send-test")}}</button>
+                    <button type="button" class="rounded border border-gray-300 px-4 py-2 text-sm dark:border-gray-600" data-test-connect-again {{on "click" (fn this.openForm true)}}>{{t "alvora-erpnext-link.connected.connect-again"}}</button>
+                    <button type="button" class="ml-auto rounded border border-red-700 px-4 py-2 text-sm text-red-700 dark:text-red-400" data-test-disconnect {{on "click" this.askDisconnect}}>{{t "alvora-erpnext-link.connected.disconnect"}}</button>
+                {{else if this.isTesting}}
+                    <button type="button" class="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white opacity-60" disabled data-test-send-test>{{t "alvora-erpnext-link.connected.sending"}}</button>
+                {{else if this.keyInvalid}}
+                    <button type="button" class="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white" data-test-connect-again {{on "click" (fn this.openForm true)}}>{{t "alvora-erpnext-link.connected.connect-again"}}</button>
+                {{else if this.step5Failed}}
+                    <button type="button" class="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white" data-test-send-test {{on "click" this.sendTest}}>{{t "alvora-erpnext-link.attention.send-test-again"}}</button>
+                    <button type="button" class="rounded border border-gray-300 px-4 py-2 text-sm dark:border-gray-600" data-test-connect-again {{on "click" (fn this.openForm true)}}>{{t "alvora-erpnext-link.connected.connect-again"}}</button>
+                {{else}}
+                    <button type="button" class="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white" data-test-change-details {{on "click" (fn this.openForm false)}}>{{t "alvora-erpnext-link.attention.change-details"}}</button>
+                {{/if}}
+            </div>
+            {{#if this.isConnected}}
+                <p class="mt-3 text-xs text-gray-600 dark:text-gray-300">{{t "alvora-erpnext-link.connected.help"}}</p>
+            {{/if}}
+        {{/if}}
+
+        {{#if this.confirmingDisconnect}}
+            <dialog id="erpnext-disconnect-dialog" class="rounded-md p-6 text-sm text-gray-900 backdrop:bg-black/50 dark:bg-gray-800 dark:text-gray-100" aria-labelledby="erpnext-disconnect-title" {{on "close" this.closeDisconnect}}>
+                <h3 id="erpnext-disconnect-title" class="text-base font-semibold">{{t "alvora-erpnext-link.disconnect.title" organization=@organization.name}}</h3>
+                <p class="mt-2">{{t "alvora-erpnext-link.disconnect.lead"}}</p>
+                <ul class="mt-2 list-disc pl-5">
+                    <li>{{t "alvora-erpnext-link.disconnect.bullet-1"}}</li>
+                    <li>{{t "alvora-erpnext-link.disconnect.bullet-2"}}</li>
+                    <li>{{t "alvora-erpnext-link.disconnect.bullet-3"}}</li>
+                    <li>{{t "alvora-erpnext-link.disconnect.bullet-4"}}</li>
+                </ul>
+                <div class="mt-4 flex gap-3">
+                    {{! template-lint-disable no-autofocus-attribute }}
+                    <button type="button" autofocus class="min-w-[9rem] rounded border border-gray-300 px-4 py-2 dark:border-gray-600" data-test-keep {{on "click" this.closeDisconnect}}>{{t "alvora-erpnext-link.disconnect.keep"}}</button>
+                    <button type="button" class="min-w-[9rem] rounded bg-red-700 px-4 py-2 text-white" data-test-confirm-disconnect {{on "click" this.disconnect}}>{{t "alvora-erpnext-link.disconnect.confirm"}}</button>
+                </div>
+            </dialog>
+        {{/if}}
+    {{else}}
+        <p class="text-sm text-gray-600 dark:text-gray-300" data-test-loading>{{t "alvora-erpnext-link.loading"}}</p>
+    {{/if}}
+</section>
