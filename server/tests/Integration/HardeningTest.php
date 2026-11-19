@@ -58,6 +58,24 @@ class HardeningTest extends IntegrationTestCase
         $this->assertSame('connected', ErpnextConnection::forCompany($c->uuid)->status);
     }
 
+    public function testTheSiteAClientIsStillConnectedToStaysLockedWhileItReplacesIt(): void
+    {
+        [$a]       = $this->makeClient('A');
+        [$b]       = $this->makeClient('B');
+        [, $token] = $this->makeStaff();
+        $this->connect($a, $token);
+        $rowA = ErpnextConnection::forCompany($a->uuid);
+        $rowA->update(['host' => 'new-' . $this->host, 'status' => 'connecting', 'run_kind' => 'connect', 'step' => 2]); // A is mid-replace to another site
+
+        $this->assertTrue(ErpnextConnection::hostInUse($this->host, $b->uuid), 'A is still delivering to its old site');
+        $this->assertTrue(ErpnextConnection::hostInUse(strtoupper($this->host), $b->uuid), 'case does not matter');
+        $this->assertFalse(ErpnextConnection::hostInUse($this->host, $a->uuid), 'A never blocks itself');
+        $this->assertFalse(ErpnextConnection::hostInUse('x' . $this->host, $b->uuid), 'only the exact site');
+
+        $this->connect($b, $token); // staff typed A's old site for B
+        $this->assertSame('host_in_use', ErpnextConnection::forCompany($b->uuid)->error_code);
+    }
+
     public function testARunInProgressHoldsTheSiteButAStaleOneDoesNot(): void
     {
         [$b]    = $this->makeClient('B');

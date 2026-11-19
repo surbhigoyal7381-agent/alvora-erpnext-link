@@ -170,7 +170,13 @@ class RunErpnextConnection implements ShouldQueue
         try {
             [$status, $json] = $guard->post($address, self::API . 'connect', $body, ['Authorization' => $token]);
         } catch (OutboundFailure $e) {
-            $this->stop($connection, $company, $e->errorCode === 'address_blocked' ? 'address_blocked' : 'handover_failed');
+            // A timeout means the connector may have saved the new pair after we stopped waiting: the outcome is unknown,
+            // so it is shown as an interruption at step 4, never as "the old one was left as it was" (review R1-1).
+            $this->stop($connection, $company, match ($e->errorCode) {
+                'address_blocked' => 'address_blocked',
+                'site_timeout'    => 'interrupted',
+                default           => 'handover_failed',
+            });
 
             return;
         }

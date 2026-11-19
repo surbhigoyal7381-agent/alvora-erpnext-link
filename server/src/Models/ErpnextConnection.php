@@ -73,13 +73,20 @@ class ErpnextConnection extends Model
      */
     public static function hostInUse(string $host, string $exceptCompanyUuid): bool
     {
-        return static::where('host', strtolower($host))
+        $host = strtolower($host);
+        $held = static::where('host', $host)
             ->where('company_uuid', '!=', $exceptCompanyUuid)
             ->where(function ($q) {
                 $q->whereNotNull('api_credential_uuid')
                     ->orWhereNotNull('pending_api_credential_uuid')
                     ->orWhere(fn ($running) => $running->where('status', self::CONNECTING)->where('updated_at', '>', now()->subSeconds(self::STALE_AFTER)));
             })
+            ->exists();
+
+        // While an organization replaces its connection, its row already names the new site; the site it is still
+        // connected to is the one its live webhook delivers to, so that stays locked too (Surbhi, 19 Nov 2026).
+        return $held || WebhookEndpoint::whereIn('uuid', static::where('company_uuid', '!=', $exceptCompanyUuid)->whereNotNull('webhook_endpoint_uuid')->select('webhook_endpoint_uuid'))
+            ->where('url', 'like', 'https://' . addcslashes($host, '%_\\') . '/%')
             ->exists();
     }
 

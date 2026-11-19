@@ -231,6 +231,24 @@ class ConnectFlowTest extends IntegrationTestCase
         $this->assertSame(1, $this->live('webhook_endpoints', $acme));
     }
 
+    public function testATimeoutAtTheHandOverIsAnInterruptionNotAnUntouchedOldConnection(): void
+    {
+        [$acme]    = $this->makeClient('Acme');
+        [, $token] = $this->makeStaff();
+        $this->connect($acme, $token);
+        $old = ErpnextConnection::forCompany($acme->uuid);
+
+        $this->erpnext->failures['.connect'] = new ConnectException('timed out', new Request('POST', "https://{$this->host}"), null, ['errno' => CURLE_OPERATION_TIMEDOUT]);
+        $this->connect($acme, $token);
+
+        $row = ErpnextConnection::forCompany($acme->uuid);
+        $this->assertSame(['attention', 'interrupted', 4], [$row->status, $row->error_code, $row->step]);
+        $this->assertSame($old->api_credential_uuid, $row->api_credential_uuid, 'the old pair is still the active one');
+        $this->assertNull($row->pending_api_credential_uuid, 'the new pair is revoked');
+        $this->assertSame(1, $this->live('api_credentials', $acme));
+        $this->assertSame('interrupted', $this->withToken($token)->getJson($this->path($acme))->json('error_code'));
+    }
+
     public function testAReplaceCutsOverAtStepFourAndNeverLeavesTwoLiveKeys(): void
     {
         [$acme]    = $this->makeClient('Acme');
