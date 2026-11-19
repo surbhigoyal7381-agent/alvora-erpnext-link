@@ -46,6 +46,7 @@ class AdminOnlyRoutesTest extends IntegrationTestCase
             'the generated api key as bearer'    => $key,
         ];
         foreach ($callers as $name => $token) {
+            $this->app['auth']->forgetGuards(); // every caller starts clean: the guard would otherwise keep the first user it resolved
             $response = ($token ? $this->withToken($token) : $this)->{$verb}($this->path($acme, $suffix), $body);
             $this->assertContains($response->getStatusCode(), [401, 403], $name . ' got ' . $response->getStatusCode());
         }

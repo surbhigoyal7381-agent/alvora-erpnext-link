@@ -268,4 +268,47 @@ module('Integration | Component | erpnext-tab', function (hooks) {
         await render_();
         assert.dom('[data-test-load-failed]').includesText('ERPNext status could not be loaded.');
     });
+
+    // ---- test engineer, slice 001: the two stop conditions of AC-6 that were only "by construction" ----
+
+    const CONNECTING = { status: 'connecting', step: 2, run_kind: 'connect', host: 'erp.example.com' };
+    const nap = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    test('polling stops while the browser tab is hidden and starts again when it is shown (AC-6)', async function (assert) {
+        respond({ ...CONNECTING });
+        let hidden = false;
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+        try {
+            await render_();
+            await nap(30); // a few polls at 5 ms
+            assert.ok(calls.length > 1, 'it polls while the page is visible');
+
+            hidden = true;
+            await nap(20); // the next poll wakes up, sees the hidden page and parks itself
+            const parked = calls.length;
+            await nap(60);
+            assert.strictEqual(calls.length, parked, 'no status request while the page is hidden');
+
+            hidden = false;
+            document.dispatchEvent(new Event('visibilitychange'));
+            await nap(30);
+            assert.ok(calls.length > parked, 'polling resumes when the page is shown again');
+        } finally {
+            delete document.hidden; // put the real property back
+        }
+    });
+
+    test('leaving the tab while a run is going stops all status requests (AC-6)', async function (assert) {
+        respond({ ...CONNECTING });
+        this.set('show', true);
+        await render(hbs`{{#if this.show}}<ErpnextTab @organization={{this.org}} @pollInterval={{5}} />{{/if}}`);
+        await nap(30);
+        assert.ok(calls.length > 1, 'it polls while the tab is open');
+
+        this.set('show', false);
+        await settled();
+        const left = calls.length;
+        await nap(60);
+        assert.strictEqual(calls.length, left, 'nothing is requested after the tab is left');
+    });
 });
