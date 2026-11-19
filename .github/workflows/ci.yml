@@ -20,6 +20,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+        env:
+          PRIVACY_FORBIDDEN_NAMES: ${{ secrets.PRIVACY_FORBIDDEN_NAMES }}
       - run: pnpm test:ember
         env:
           CI: 'true'
