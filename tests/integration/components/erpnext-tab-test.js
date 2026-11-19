@@ -73,7 +73,7 @@ module('Integration | Component | erpnext-tab', function (hooks) {
 
         assert.dom('h2').hasText('Connect to ERPNext');
         assert.dom('[data-test-before-you-start]').includesText('AlvoraVector connector');
-        assert.dom('[data-test-badge]').includesText('Not set up');
+        assert.dom('[data-test-badge]').includesText('ERPNext: Not set up');
         assert.dom('#erpnext-apiSecret').hasAttribute('type', 'password');
         assert.dom('#erpnext-apiSecret').hasAttribute('autocomplete', 'off');
         assert.dom('[data-test-cancel]').doesNotExist();
@@ -200,7 +200,7 @@ module('Integration | Component | erpnext-tab', function (hooks) {
         responses = [{ status: 409, json: { error: 'A connection is already being set up.' } }];
         await click('[data-test-connect]');
         assert.dom('[data-test-problem="busy"]').includesText('A connection is already being set up.');
-        assert.dom('[data-test-badge]').includesText('Not set up');
+        assert.dom('[data-test-badge]').includesText('ERPNext: Not set up');
         assert.dom('#erpnext-apiSecret').hasValue('', 'secret emptied even when refused');
 
         await fillIn('#erpnext-apiSecret', 's');
@@ -250,6 +250,7 @@ module('Integration | Component | erpnext-tab', function (hooks) {
         await render_();
         await click('[data-test-disconnect]');
         assert.dom('#erpnext-disconnect-title').hasText('Disconnect ERPNext from Client Foods?');
+        assert.dom('#erpnext-disconnect-dialog li').hasText("Client Foods's ERPNext stops receiving events from AlvoraVector.");
         assert.dom('[data-test-keep]').isFocused();
         await click('[data-test-keep]');
         assert.dom('#erpnext-disconnect-dialog').doesNotExist();
@@ -310,5 +311,31 @@ module('Integration | Component | erpnext-tab', function (hooks) {
         const left = calls.length;
         await nap(60);
         assert.strictEqual(calls.length, left, 'nothing is requested after the tab is left');
+    });
+
+    // ---- fix round 1 ----
+
+    test('after failed status calls the wait doubles instead of hammering the server (D3)', async function (assert) {
+        const failed = { status: 500, json: { error: 'x' } };
+        responses = [{ json: { ...CONNECTING } }, failed, failed, failed, { json: { ...CONNECTING, status: 'connected', step: null, run_kind: null } }];
+        const started = Date.now();
+        await render_();
+        // four failures at a 5 ms interval wait 5, 10, 20 and 40 ms; without back-off they would wait 4 x 5 ms
+        assert.strictEqual(calls.length, 5);
+        assert.ok(Date.now() - started >= 70, `took ${Date.now() - started} ms`);
+    });
+
+    test('an interrupted replace at step 4 does not claim the old connection was left as it was', async function (assert) {
+        respond({ status: 'attention', step: 4, host: 'erp.example.com', error_code: 'interrupted', has_previous: true });
+        await render_();
+        assert.dom('[data-test-alert="interrupted"]').includesText('ERPNext may already hold the new key');
+        assert.dom('[data-test-alert="interrupted"]').doesNotIncludeText('The previous connection was left as it was.');
+    });
+
+    test('the address, host-in-use and test-failed alerts use the prototype words', async function (assert) {
+        respond({ status: 'attention', step: 1, host: 'erp.example.com', error_code: 'address_blocked' });
+        await render_();
+        assert.dom('[data-test-alert="address_blocked"]').includesText('nothing after the name');
+        assert.dom('[data-test-alert="address_blocked"] li').exists({ count: 3 });
     });
 });

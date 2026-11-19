@@ -40,7 +40,7 @@ class ConnectFlowTest extends IntegrationTestCase
 
         $row = ErpnextConnection::forCompany($acme->uuid);
         $this->assertSame('connected', $row->status, 'the sync queue ran all five steps');
-        $this->assertSame('erp.example.com', $row->host);
+        $this->assertSame($this->host, $row->host);
         $this->assertNotNull($row->connected_at);
         $this->assertTrue($row->last_test_ok);
 
@@ -54,7 +54,7 @@ class ConnectFlowTest extends IntegrationTestCase
         $this->assertSame($acme->uuid, $webhook->company_uuid);
         $this->assertSame('live', $webhook->mode);
         $this->assertSame('enabled', $webhook->status);
-        $this->assertSame('https://erp.example.com/api/method/alvoraa_vector.api.webhook', $webhook->url);
+        $this->assertSame("https://{$this->host}/api/method/alvoraa_vector.api.webhook", $webhook->url);
         $this->assertSame(['order.completed', 'order.canceled'], $webhook->events);
         $this->assertNull($row->pending_api_credential_uuid);
 
@@ -125,7 +125,7 @@ class ConnectFlowTest extends IntegrationTestCase
     {
         [$acme]                             = $this->makeClient('Acme');
         [, $token]                          = $this->makeStaff();
-        $this->erpnext->failures['.verify'] = new ConnectException('timed out', new Request('POST', 'https://erp.example.com'), null, ['errno' => CURLE_OPERATION_TIMEDOUT]);
+        $this->erpnext->failures['.verify'] = new ConnectException('timed out', new Request('POST', "https://{$this->host}"), null, ['errno' => CURLE_OPERATION_TIMEDOUT]);
 
         $this->connect($acme, $token);
 
@@ -138,14 +138,25 @@ class ConnectFlowTest extends IntegrationTestCase
         [$acme]    = $this->makeClient('Acme');
         [, $token] = $this->makeStaff();
 
-        foreach (['https://127.0.0.1', 'http://erp.example.com', 'https://user:pw@erp.example.com', 'https://erp.example.com:8443', 'https://localhost'] as $address) {
-            $this->connect($acme, $token, $this->connectBody('s', $address))->assertStatus($address === 'http://erp.example.com' ? 422 : 202);
-            if ($address !== 'http://erp.example.com') {
+        foreach (['https://127.0.0.1', "http://{$this->host}", "https://user:pw@{$this->host}", "https://{$this->host}:8443", 'https://localhost'] as $address) {
+            $this->connect($acme, $token, $this->connectBody('s', $address))->assertStatus($address === "http://{$this->host}" ? 422 : 202);
+            if ($address !== "http://{$this->host}") {
                 $row = ErpnextConnection::forCompany($acme->uuid);
                 $this->assertSame(['attention', 'address_blocked', 1], [$row->status, $row->error_code, $row->step], $address);
             }
         }
         $this->assertSame(0, count($this->erpnext->requests), 'the HTTP client never connected');
+    }
+
+    public function testAnAddressCopiedWithAPathIsBlockedBeforeAnyConnection(): void
+    {
+        [$acme]    = $this->makeClient('Acme');
+        [, $token] = $this->makeStaff();
+
+        $this->connect($acme, $token, $this->connectBody('s', "https://{$this->host}/app/home"));
+
+        $this->assertSame(['attention', 'address_blocked', 1], [($row = ErpnextConnection::forCompany($acme->uuid))->status, $row->error_code, $row->step]);
+        $this->assertSame(0, count($this->erpnext->requests));
     }
 
     public function testANameThatResolvesToAPrivateAddressIsBlockedAtStepOne(): void
@@ -264,7 +275,7 @@ class ConnectFlowTest extends IntegrationTestCase
         [$acme, $owner]         = $this->makeClient('Acme');
         [, $token]              = $this->makeStaff();
         [$credential, $webhook] = $this->makePair($acme, $owner);
-        ErpnextConnection::create(['company_uuid' => $acme->uuid, 'host' => 'erp.example.com', 'status' => 'attention', 'error_code' => 'interrupted', 'step' => 3, 'pending_api_credential_uuid' => $credential->uuid, 'pending_webhook_endpoint_uuid' => $webhook->uuid]);
+        ErpnextConnection::create(['company_uuid' => $acme->uuid, 'host' => $this->host, 'status' => 'attention', 'error_code' => 'interrupted', 'step' => 3, 'pending_api_credential_uuid' => $credential->uuid, 'pending_webhook_endpoint_uuid' => $webhook->uuid]);
 
         $this->connect($acme, $token);
 
@@ -279,7 +290,7 @@ class ConnectFlowTest extends IntegrationTestCase
         [, $token]               = $this->makeStaff();
         [$active, $activeHook]   = $this->makePair($acme, $owner);
         [$pending, $pendingHook] = $this->makePair($acme, $owner);
-        $row                     = ErpnextConnection::create(['company_uuid' => $acme->uuid, 'host' => 'erp.example.com', 'status' => 'connecting', 'run_kind' => 'connect', 'step' => 4,
+        $row                     = ErpnextConnection::create(['company_uuid' => $acme->uuid, 'host' => $this->host, 'status' => 'connecting', 'run_kind' => 'connect', 'step' => 4,
             'api_credential_uuid'                                            => $active->uuid, 'webhook_endpoint_uuid' => $activeHook->uuid, 'pending_api_credential_uuid' => $pending->uuid, 'pending_webhook_endpoint_uuid' => $pendingHook->uuid]);
 
         // Four minutes old: still running, not touched.
@@ -300,7 +311,7 @@ class ConnectFlowTest extends IntegrationTestCase
         [$acme, $owner]        = $this->makeClient('Acme');
         [, $token]             = $this->makeStaff();
         [$active, $activeHook] = $this->makePair($acme, $owner);
-        $row                   = ErpnextConnection::create(['company_uuid' => $acme->uuid, 'host' => 'erp.example.com', 'status' => 'connecting', 'run_kind' => 'connect', 'step' => 5, 'api_credential_uuid' => $active->uuid, 'webhook_endpoint_uuid' => $activeHook->uuid]);
+        $row                   = ErpnextConnection::create(['company_uuid' => $acme->uuid, 'host' => $this->host, 'status' => 'connecting', 'run_kind' => 'connect', 'step' => 5, 'api_credential_uuid' => $active->uuid, 'webhook_endpoint_uuid' => $activeHook->uuid]);
         DB::table('alvora_erpnext_connections')->where('uuid', $row->uuid)->update(['updated_at' => now()->subMinutes(6)]);
 
         $this->withToken($token)->getJson($this->path($acme))->assertJsonPath('status', 'attention')->assertJsonPath('step', 5);
@@ -312,7 +323,7 @@ class ConnectFlowTest extends IntegrationTestCase
     {
         [$acme]    = $this->makeClient('Acme');
         [, $token] = $this->makeStaff();
-        ErpnextConnection::create(['company_uuid' => $acme->uuid, 'host' => 'erp.example.com', 'status' => 'connecting', 'run_kind' => 'connect', 'step' => 2, 'api_credential_uuid' => (string) \Illuminate\Support\Str::uuid()]);
+        ErpnextConnection::create(['company_uuid' => $acme->uuid, 'host' => $this->host, 'status' => 'connecting', 'run_kind' => 'connect', 'step' => 2, 'api_credential_uuid' => (string) \Illuminate\Support\Str::uuid()]);
         Queue::fake();
 
         foreach ([['postJson', '/connect', $this->connectBody()], ['postJson', '/test', []], ['deleteJson', '', []]] as [$verb, $suffix, $body]) {
@@ -325,8 +336,8 @@ class ConnectFlowTest extends IntegrationTestCase
     {
         [$acme] = $this->makeClient('Acme');
 
-        $first  = ErpnextConnection::begin($acme->uuid, 'connect', 'run-1', 'erp.example.com');
-        $second = ErpnextConnection::begin($acme->uuid, 'connect', 'run-2', 'erp.example.com');
+        $first  = ErpnextConnection::begin($acme->uuid, 'connect', 'run-1', $this->host);
+        $second = ErpnextConnection::begin($acme->uuid, 'connect', 'run-2', $this->host);
 
         $this->assertNotNull($first);
         $this->assertNull($second);
@@ -411,7 +422,7 @@ class ConnectFlowTest extends IntegrationTestCase
         [, $token] = $this->makeStaff();
         $this->connect($a, $token);
 
-        $this->connect($b, $token, $this->connectBody('s', 'https://ERP.example.com'));
+        $this->connect($b, $token, $this->connectBody('s', 'https://' . strtoupper($this->host)));
 
         $row = ErpnextConnection::forCompany($b->uuid);
         $this->assertSame(['attention', 'host_in_use', 1], [$row->status, $row->error_code, $row->step]);
@@ -473,7 +484,7 @@ class ConnectFlowTest extends IntegrationTestCase
         $this->withToken($token)->deleteJson($this->path($acme))->assertOk()->assertJsonPath('status', 'disconnected');
 
         $row->refresh();
-        $this->assertSame(['disconnected', 'erp.example.com', null], [$row->status, $row->host, $row->api_credential_uuid]);
+        $this->assertSame(['disconnected', $this->host, null], [$row->status, $row->host, $row->api_credential_uuid]);
         $this->assertNull(ApiCredential::where('uuid', $keys[0])->first(), 'the key now gives 401');
         $this->assertNull(WebhookEndpoint::where('uuid', $keys[1])->first());
         $this->assertSame($sent, count($this->erpnext->requests), 'no outbound call');
@@ -497,7 +508,7 @@ class ConnectFlowTest extends IntegrationTestCase
             $this->assertSame($acme->uuid, $entry->company_id, 'filed under the client, not the admin\'s own organisation');
             $this->assertNotSame($home->uuid, $entry->company_id);
             $this->assertSame($staff->uuid, $entry->causer_id);
-            $this->assertSame('erp.example.com', $entry->properties['host']);
+            $this->assertSame($this->host, $entry->properties['host']);
             $this->assertArrayHasKey('ip', $entry->properties->all());
         }
         $this->assertDoesNotMatchRegularExpression('/flb_(live|test)_|whsec_|api\/method|ZZSENTINEL|erp-key-1/', json_encode($entries));
@@ -529,7 +540,7 @@ class ConnectFlowTest extends IntegrationTestCase
         $context = $lines->first()->context;
         $this->assertSame($acme->public_id, $context['organization']);
         $this->assertSame(['run', 'organization', 'kind', 'step', 'outcome', 'error_code', 'exception', 'duration_ms'], array_keys($context));
-        $this->assertStringNotContainsString('erp.example.com', json_encode($this->logs->getRecords()));
+        $this->assertStringNotContainsString($this->host, json_encode($this->logs->getRecords()));
         $this->assertSecretNowhere('ZZSENTINEL-secret');
     }
 

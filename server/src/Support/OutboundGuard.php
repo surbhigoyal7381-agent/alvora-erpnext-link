@@ -20,6 +20,9 @@ class OutboundGuard
 
     public const MAX_BODY = 65536;
 
+    /** The DNS lookup has no timeout of its own, so it runs in a child process that is killed after this many seconds. */
+    public const LOOKUP_TIMEOUT = 5;
+
     private const PRIVATE_SUFFIXES = ['local', 'localhost', 'internal', 'localdomain', 'lan', 'home', 'corp', 'intranet', 'arpa', 'test', 'invalid', 'example'];
 
     /** @var \Closure(string): array<int, string> */
@@ -77,6 +80,8 @@ class OutboundGuard
     {
         try {
             $addresses = ($this->resolver)($host);
+        } catch (OutboundFailure $e) {
+            throw $e;
         } catch (\Throwable) {
             throw new OutboundFailure('address_blocked');
         }
@@ -113,11 +118,14 @@ class OutboundGuard
             'http_errors'     => false,
             'verify'          => true,
             'proxy'           => '',
-            'progress'        => fn ($downloadTotal, $downloaded) => $downloaded > self::MAX_BODY ? 1 : 0,
             'curl'            => [
-                CURLOPT_RESOLVE         => [$host . ':443:' . $ip],
-                CURLOPT_PROTOCOLS       => CURLPROTO_HTTPS,
-                CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+                // Guzzle's own 'progress' option ignores the callback's answer, so the cap is set on curl itself:
+                // returning 1 aborts the transfer (cURL error 42), which is mapped to site_error below.
+                CURLOPT_NOPROGRESS       => false,
+                CURLOPT_XFERINFOFUNCTION => fn ($handle, $downloadTotal, $downloaded) => $downloaded > self::MAX_BODY ? 1 : 0,
+                CURLOPT_RESOLVE          => [$host . ':443:' . $ip],
+                CURLOPT_PROTOCOLS        => CURLPROTO_HTTPS,
+                CURLOPT_REDIR_PROTOCOLS  => CURLPROTO_HTTPS,
             ],
         ];
 
@@ -150,15 +158,38 @@ class OutboundGuard
     }
 
     /**
-     * Default resolver: every A and AAAA answer for the name.
+     * Default resolver: every A and AAAA answer for the name. PHP's DNS call cannot be given a timeout, so it
+     * runs in a child PHP process (the host is already validated and goes in as an argument, not through a
+     * shell) that is killed after $timeout seconds: site_timeout. Used by the queue worker, which is the CLI.
      *
      * @return array<int, string>
      */
-    public static function lookup(string $host): array
+    public static function lookup(string $host, int $timeout = self::LOOKUP_TIMEOUT): array
     {
-        $records = @dns_get_record($host, DNS_A | DNS_AAAA) ?: [];
+        $code    = 'echo json_encode(array_map(fn ($r) => $r["ip"] ?? $r["ipv6"] ?? null, @dns_get_record($argv[1], DNS_A | DNS_AAAA) ?: []));';
+        $process = proc_open([PHP_BINARY, '-r', $code, '--', $host], [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+        // proc_open() returning false leaves $pipes empty: the next line fails, and resolve() turns any failure into address_blocked.
+        $output   = '';
+        $deadline = microtime(true) + $timeout;
+        while (!feof($pipes[1])) {
+            $left = $deadline - microtime(true);
+            $read = [$pipes[1]];
+            $none = null;
+            if ($left <= 0 || !stream_select($read, $none, $none, (int) $left, (int) (fmod($left, 1) * 1e6))) {
+                proc_terminate($process, 9);
+                fclose($pipes[1]);
+                proc_close($process);
 
-        return array_values(array_filter(array_map(fn ($record) => $record['ip'] ?? $record['ipv6'] ?? null, $records)));
+                throw new OutboundFailure('site_timeout');
+            }
+            $output .= (string) fread($pipes[1], 8192);
+        }
+        fclose($pipes[1]);
+        proc_close($process);
+
+        $addresses = json_decode($output, true);
+
+        return is_array($addresses) ? array_values(array_filter($addresses, 'is_string')) : [];
     }
 
     private static function publicV4(string $packed): bool

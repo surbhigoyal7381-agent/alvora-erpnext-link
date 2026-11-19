@@ -181,15 +181,15 @@ class RunErpnextConnection implements ShouldQueue
             return;
         }
 
-        // The cut-over: the connector holds the new pair, so remove the old one and promote the new one together.
+        // The cut-over: the connector holds the new pair, so promote it at once. One UPDATE, the very next statement after
+        // the connector's reply, makes the new pair active and parks the old one as "pending" to be revoked; a kill after
+        // it leaves a consistent pair and the next Connect, Disconnect or sweep revokes the parked one.
         $old = [$connection->api_credential_uuid, $connection->webhook_endpoint_uuid];
-        DB::transaction(function () use ($connection, $credential, $webhook, $old) {
-            ErpnextConnection::revoke(...$old);
-            $connection->update([
-                'api_credential_uuid'         => $credential->uuid, 'webhook_endpoint_uuid' => $webhook->uuid,
-                'pending_api_credential_uuid' => null, 'pending_webhook_endpoint_uuid' => null, 'step' => 5,
-            ]);
-        });
+        $connection->update([
+            'api_credential_uuid'         => $credential->uuid, 'webhook_endpoint_uuid' => $webhook->uuid,
+            'pending_api_credential_uuid' => $old[0], 'pending_webhook_endpoint_uuid' => $old[1], 'step' => 5,
+        ]);
+        $connection->revokePending();
         if ($old[0]) {
             $this->audit($company, $connection, 'replaced', 'ERPNext connection replaced', ['old_credential' => $old[0], 'new_credential' => $credential->uuid]);
         }
@@ -283,17 +283,18 @@ class RunErpnextConnection implements ShouldQueue
     private function stop(ErpnextConnection $connection, Company $company, string $code): void
     {
         $connection->refresh();
+        $attempted = $connection->host; // fail() puts the still-connected site back; the audit entry names the one tried
         $connection->revokePending();
         $connection->fail($code);
 
         $this->kind === 'connect'
-            ? $this->audit($company, $connection, 'connect_failed', 'ERPNext connect failed', ['step' => $connection->step, 'error_code' => $code])
+            ? $this->audit($company, $connection, 'connect_failed', 'ERPNext connect failed', ['step' => $connection->step, 'error_code' => $code, 'host' => $attempted])
             : $this->audit($company, $connection, 'test_event', 'ERPNext test event failed', ['result' => 'failed', 'error_code' => $code]);
     }
 
     private function audit(Company $company, ErpnextConnection $connection, string $event, string $description, array $properties = []): void
     {
-        Audit::record($company, $this->actorUuid, $this->actorIp, $event, $description, ['host' => $connection->host] + $properties);
+        Audit::record($company, $this->actorUuid, $this->actorIp, $event, $description, $properties + ['host' => $connection->host]);
     }
 
     private static function isMember(string $companyUuid, string $userUuid): bool

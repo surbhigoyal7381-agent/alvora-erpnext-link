@@ -68,13 +68,18 @@ class ErpnextConnection extends Model
     }
 
     /**
-     * Another organization already uses this host (any state but disconnected), ignoring case.
+     * Another organization already uses this host, ignoring case: it holds a live key for it, or has a run
+     * going. A failed, interrupted or disconnected row locks nothing (DEC-035, Surbhi 19 Nov 2026).
      */
     public static function hostInUse(string $host, string $exceptCompanyUuid): bool
     {
         return static::where('host', strtolower($host))
             ->where('company_uuid', '!=', $exceptCompanyUuid)
-            ->where('status', '!=', self::DISCONNECTED)
+            ->where(function ($q) {
+                $q->whereNotNull('api_credential_uuid')
+                    ->orWhereNotNull('pending_api_credential_uuid')
+                    ->orWhere(fn ($running) => $running->where('status', self::CONNECTING)->where('updated_at', '>', now()->subSeconds(self::STALE_AFTER)));
+            })
             ->exists();
     }
 
@@ -169,10 +174,22 @@ class ErpnextConnection extends Model
     {
         $step   = self::STEP_OF[$code] ?? $this->step;
         $update = ['status' => self::ATTENTION, 'step' => $step, 'error_code' => $code, 'run_kind' => null];
+        if ($step < 5 && ($host = $this->activeHost())) {
+            $update['host'] = $host; // a failed attempt at a new site must not hide the site that is still connected
+        }
         if ($step === 5) {
             $update += ['last_test_at' => now(), 'last_test_ok' => false];
         }
         $this->update($update);
+    }
+
+    /** The host the active pair delivers to, or null when there is none. */
+    private function activeHost(): ?string
+    {
+        $url  = $this->webhook_endpoint_uuid ? WebhookEndpoint::where('uuid', $this->webhook_endpoint_uuid)->value('url') : null;
+        $host = $url ? parse_url($url, PHP_URL_HOST) : null;
+
+        return is_string($host) ? strtolower($host) : null;
     }
 
     public function connected(int $ms): void
@@ -206,9 +223,9 @@ class ErpnextConnection extends Model
     }
 
     /**
-     * A run that stopped updating is treated as killed (done on read; no scheduled job). Before the
-     * cut-over (steps 1 to 4) a half-made pair is revoked and the active pair left alone; at step 5
-     * the new pair is already active and nothing is revoked. `$force` ignores the five-minute wait.
+     * A run that stopped updating is treated as killed (done on read; no scheduled job). Whatever is pending
+     * is revoked: before the cut-over that is the half-made new pair, after it the old pair; the active pair is
+     * never touched. `$force` ignores the five-minute wait.
      * Returns true when this call changed the row.
      */
     public function sweep(bool $force = false): bool
@@ -226,8 +243,9 @@ class ErpnextConnection extends Model
         }
 
         $this->refresh();
-        if (($this->step ?? 1) <= 4) {
-            $this->revokePending();
+        $this->revokePending(); // before the cut-over: the half-made pair; after it: the old pair that was left to revoke
+        if (($this->step ?? 1) < 5 && ($host = $this->activeHost())) {
+            $this->update(['host' => $host]);
         }
 
         return true;

@@ -3,6 +3,7 @@ alvora-erpnext-link:
   load-failed: ERPNext status could not be loaded.
   retry: Retry
   badge:
+    tab: 'ERPNext: {status}'
     disconnected: Not set up
     connecting: Connecting
     connected: Connected
@@ -77,7 +78,7 @@ alvora-erpnext-link:
   disconnect:
     title: 'Disconnect ERPNext from {organization}?'
     lead: This takes effect straight away.
-    bullet-1: This client's ERPNext stops receiving events.
+    bullet-1: "{organization}'s ERPNext stops receiving events from AlvoraVector."
     bullet-2: Orders, riders and payouts already in AlvoraVector are not changed or deleted.
     bullet-3: The Fleetbase key and webhook for this client are removed.
     bullet-4: ERPNext keeps its unused copy of the old key until someone removes it there.
@@ -106,7 +107,8 @@ alvora-erpnext-link:
       title: 'Step 1 failed: this address is not allowed'
       body: AlvoraVector only connects to the public https:// address of an ERPNext site. It never connects to addresses inside a private network. Nothing was sent and nothing was changed.
       todo-1: Use the address people type in a browser, for example https://erp.example.com.
-      todo-2: If you copied it from a redirect or an internal tool, open the site and copy the final address.
+      todo-2: Use only the site address, with nothing after the name. If you copied it from the browser's address bar, remove everything after the site name (for example /app/home).
+      todo-3: If you copied it from a redirect or an internal tool, open the site and copy the final address.
     key_refused:
       title: 'Step 2 failed: ERPNext did not accept the key or secret'
       body: '{host} answered, but the key and secret were refused. Nothing was created or changed.'
@@ -122,13 +124,13 @@ alvora-erpnext-link:
     test_failed:
       title: 'Step 5 failed: ERPNext did not confirm the test event'
       body: The key and webhook were handed over, but ERPNext did not confirm the test event within 10 seconds. The connection is not proven yet.
-      todo-1: Press "Send test event" again; a slow site may need a second go.
+      todo-1: Press "Send test event" again; a slow site may only need a second go.
       todo-2: If it fails again, ask whoever looks after this client's ERPNext to check that the AlvoraVector connector app is running.
     host_in_use:
       title: 'Step 1 failed: this ERPNext site is already connected to another client'
       body: Each client needs its own ERPNext site. Nothing was created or changed.
       todo-1: Check you typed this client's own ERPNext address, not another client's.
-      todo-2: If this client has no ERPNext site of its own yet, it needs one first. One site cannot serve two clients.
+      todo-2: If this client really has no ERPNext site of its own yet, it needs one first. One site cannot serve two clients.
       todo-3: If you think the site should be free, look for an old connection to it on another organization's ERPNext tab and disconnect it there.
     site_error:
       title: 'Step 2 failed: {host} could not be checked'
@@ -163,7 +165,7 @@ alvora-erpnext-link:
       todo-2: Press Connect straight away.
     interrupted:
       title: The connection was interrupted
-      body: It did not finish, so it is not proven. If you were replacing a connection, the old one was left as it was.
+      body: It did not finish, so it is not proven. If you were replacing a connection and it stopped at step 4, ERPNext may already hold the new key and not receive events until you connect again.
       todo-1: The steps below show how far it got.
       todo-2: Type the secret again and try again. Anything half-made is cleaned up on the new attempt.
       todo-3: If it is interrupted again, tell the AlvoraVector team.

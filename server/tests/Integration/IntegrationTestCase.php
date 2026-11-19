@@ -25,6 +25,9 @@ abstract class IntegrationTestCase extends TestCase
 
     protected TestHandler $logs;
 
+    /** A random site name per test, so rows another run committed to a shared database cannot block the host (D1). */
+    protected string $host;
+
     public function createApplication()
     {
         $app = require rtrim(getenv('ALVORA_API_PATH'), '/') . '/bootstrap/app.php';
@@ -44,6 +47,7 @@ abstract class IntegrationTestCase extends TestCase
         config(['queue.default' => 'sync', 'mail.default' => 'array']);
         DB::beginTransaction();
 
+        $this->host    = 'erp-' . bin2hex(random_bytes(4)) . '.example.com';
         $this->erpnext = new FakeErpnext();
         $this->app->instance(OutboundGuard::class, new OutboundGuard(fn () => ['93.184.216.34'], fn () => $this->erpnext->client()));
 
@@ -94,9 +98,9 @@ abstract class IntegrationTestCase extends TestCase
         return '/int/v1/alvora/organizations/' . $company->public_id . '/erpnext' . $suffix;
     }
 
-    protected function connectBody(string $secret = 'ZZSENTINEL-secret', string $address = 'https://erp.example.com'): array
+    protected function connectBody(string $secret = 'ZZSENTINEL-secret', ?string $address = null): array
     {
-        return ['address' => $address, 'api_key' => 'erp-key-1', 'api_secret' => $secret];
+        return ['address' => $address ?? "https://{$this->host}", 'api_key' => 'erp-key-1', 'api_secret' => $secret];
     }
 
     protected function connect(Company $company, string $token, ?array $body = null)
@@ -110,7 +114,7 @@ abstract class IntegrationTestCase extends TestCase
         $credential = new ApiCredential(['company_uuid' => $company->uuid, 'user_uuid' => $owner->uuid, 'name' => 'pair']);
         $credential->disableLogging();
         $credential->save();
-        $webhook = new WebhookEndpoint(['company_uuid' => $company->uuid, 'api_credential_uuid' => $credential->uuid, 'url' => 'https://erp.example.com/x', 'mode' => 'live', 'status' => 'enabled', 'events' => ['order.completed']]);
+        $webhook = new WebhookEndpoint(['company_uuid' => $company->uuid, 'api_credential_uuid' => $credential->uuid, 'url' => "https://{$this->host}/x", 'mode' => 'live', 'status' => 'enabled', 'events' => ['order.completed']]);
         $webhook->disableLogging();
         $webhook->save();
 

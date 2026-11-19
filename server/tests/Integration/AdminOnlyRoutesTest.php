@@ -60,7 +60,7 @@ class AdminOnlyRoutesTest extends IntegrationTestCase
         [$acme, $owner] = $this->makeClient('Acme');
 
         $this->withToken($owner->createToken('impersonation')->plainTextToken)->postJson($this->path($acme, '/connect'), $this->connectBody())->assertStatus(401);
-        $this->assertSame(0, ErpnextConnection::count());
+        $this->assertSame(0, ErpnextConnection::where('company_uuid', $acme->uuid)->count());
     }
 
     public function testAnUnknownOrganisationIsA404WithNoDetail(): void

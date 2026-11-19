@@ -23,7 +23,7 @@ export function stepStates(status) {
  * How many "what to do" bullets each failure has (the words live in the translations).
  */
 export const TODO_COUNT = {
-    address_blocked: 2,
+    address_blocked: 3,
     key_refused: 3,
     site_timeout: 3,
     test_failed: 2,

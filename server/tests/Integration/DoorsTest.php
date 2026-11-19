@@ -36,8 +36,9 @@ class DoorsTest extends IntegrationTestCase
     }
 
     /** Connect a client through the extension and return its generated key. */
-    private function connected(Company $company, string $token, string $address = 'https://erp.example.com'): string
+    private function connected(Company $company, string $token, ?string $address = null): string
     {
+        $address ??= "https://{$this->host}";
         $this->connect($company, $token, $this->connectBody('s', $address))->assertStatus(202);
 
         return ApiCredential::where('uuid', ErpnextConnection::forCompany($company->uuid)->api_credential_uuid)->first()->key;
@@ -51,7 +52,7 @@ class DoorsTest extends IntegrationTestCase
         $mine      = $this->order($acme);
         $theirs    = $this->order($other);
         $acmeKey   = $this->connected($acme, $token);
-        $otherKey  = $this->connected($other, $token, 'https://erp.other-example.com');
+        $otherKey  = $this->connected($other, $token, "https://other.{$this->host}");
 
         $list = $this->withToken($acmeKey)->getJson('/v1/orders');
         $list->assertOk();
@@ -93,7 +94,7 @@ class DoorsTest extends IntegrationTestCase
         [$other]   = $this->makeClient('Other');
         [, $token] = $this->makeStaff();
         $this->connected($acme, $token);
-        $this->connected($other, $token, 'https://erp.other-example.com');
+        $this->connected($other, $token, "https://other.{$this->host}");
         $orderId = $this->order($other, 'completed');
         $order   = \Fleetbase\FleetOps\Models\Order::where('public_id', $orderId)->first();
         Queue::fake();
@@ -107,7 +108,7 @@ class DoorsTest extends IntegrationTestCase
 
             return true;
         });
-        $this->assertSame(['https://erp.other-example.com/api/method/alvoraa_vector.api.webhook'], $urls, 'AC-78');
+        $this->assertSame(["https://other.{$this->host}/api/method/alvoraa_vector.api.webhook"], $urls, 'AC-78');
     }
 
     public function testADriverLocationEventIsNeverSentToTheEndpoint(): void
@@ -194,6 +195,5 @@ class DoorsTest extends IntegrationTestCase
         foreach ($columns as $column) {
             $this->assertDoesNotMatchRegularExpression('/secret|key$|password|token/', $column, 'no secret column (SEC-7, SEC-8)');
         }
-        $this->assertSame(0, ErpnextConnection::count(), 'the table starts empty');
     }
 }

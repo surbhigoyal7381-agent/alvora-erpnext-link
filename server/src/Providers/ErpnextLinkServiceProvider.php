@@ -7,9 +7,12 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 
+// Same guard as every Fleetbase extension; it can only fire where core-api is missing, so no test can reach it.
+// @codeCoverageIgnoreStart
 if (!class_exists(CoreServiceProvider::class)) {
     throw new \Exception('Extension cannot be loaded without `fleetbase/core-api` installed!');
 }
+// @codeCoverageIgnoreEnd
 
 class ErpnextLinkServiceProvider extends CoreServiceProvider
 {

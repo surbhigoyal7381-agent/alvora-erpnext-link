@@ -6,11 +6,13 @@ use Alvora\ErpnextLink\Support\OutboundFailure;
 use Alvora\ErpnextLink\Support\OutboundGuard;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Handler\CurlHandler;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
+use GuzzleHttp\Psr7\Uri;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -22,6 +24,9 @@ class OutboundGuardTest extends TestCase
     private array $history = [];
 
     private int $connections = 0;
+
+    /** @var resource|null */
+    private $server;
 
     private function guard(array $answers, ?\Closure $resolver = null, array $responses = []): OutboundGuard
     {
@@ -138,13 +143,106 @@ class OutboundGuardTest extends TestCase
         $this->assertSame('token a:b', $this->history[0]['request']->getHeaderLine('Authorization'));
     }
 
-    public function testTheBodyIsCappedAt64KbByAbortingTheTransfer(): void
+    public function testTheBodyCapIsSetOnCurlItselfBecauseGuzzlesProgressOptionIgnoresItsAnswer(): void
     {
         $this->guard(['93.184.216.34'])->post('https://erp.example.com', '/x', '{}');
-        $progress = $this->history[0]['options']['progress'];
+        $options = $this->history[0]['options'];
+        $abort   = $options['curl'][CURLOPT_XFERINFOFUNCTION];
 
-        $this->assertSame(0, $progress(0, OutboundGuard::MAX_BODY));
-        $this->assertSame(1, $progress(0, OutboundGuard::MAX_BODY + 1));
+        $this->assertArrayNotHasKey('progress', $options);
+        $this->assertFalse($options['curl'][CURLOPT_NOPROGRESS]);
+        $this->assertSame(0, $abort(null, 0, OutboundGuard::MAX_BODY));
+        $this->assertSame(1, $abort(null, 0, OutboundGuard::MAX_BODY + 1));
+    }
+
+    /**
+     * The guard's own curl options against a real HTTP server (the TLS, pinning and protocol options are dropped,
+     * everything else is the guard's): a 2 MB answer must be cut off, not read.
+     */
+    public function testARealServerStreaming2MbIsCutOffAndABigButNormalAnswerStillWorks(): void
+    {
+        $port   = $this->startServer();
+        $curl   = new CurlHandler();
+        $client = new Client(['handler' => function ($request, array $options) use ($curl, $port) {
+            unset($options['curl'][CURLOPT_RESOLVE], $options['curl'][CURLOPT_PROTOCOLS], $options['curl'][CURLOPT_REDIR_PROTOCOLS]);
+            $options['verify'] = false;
+
+            return $curl($request->withUri(new Uri('http://127.0.0.1:' . $port . $request->getUri()->getPath())), $options);
+        }]);
+        $guard = new OutboundGuard(fn () => ['93.184.216.34'], fn () => $client);
+
+        [$status, $json] = $guard->post('https://erp.example.com', '/small', '{}');
+        $this->assertSame(200, $status);
+        $this->assertTrue($json['message']['ok']);
+
+        try {
+            $guard->post('https://erp.example.com', '/big', '{}');
+            $this->fail('A 2 MB answer was read to the end.');
+        } catch (OutboundFailure $e) {
+            $this->assertSame('site_error', $e->errorCode);
+        }
+    }
+
+    public function testADnsLookupThatDoesNotFinishInTimeIsASiteTimeout(): void
+    {
+        $started = microtime(true);
+        try {
+            OutboundGuard::lookup('slow-name.example.com', 0);
+            $this->fail('A lookup with no time allowed finished.');
+        } catch (OutboundFailure $e) {
+            $this->assertSame('site_timeout', $e->errorCode);
+        }
+        $this->assertLessThan(2, microtime(true) - $started, 'it does not wait for the answer');
+    }
+
+    public function testTheDefaultLookupReturnsOnlyAddressStringsWithinItsTimeLimit(): void
+    {
+        // Needs a resolver: with none reachable the answer is a timeout, which is also the correct, bounded outcome.
+        try {
+            $addresses = OutboundGuard::lookup('localhost', 8);
+        } catch (OutboundFailure $e) {
+            $this->assertSame('site_timeout', $e->errorCode);
+
+            return;
+        }
+        $this->assertContainsOnly('string', $addresses);
+    }
+
+    public function testATimeoutFromTheResolverReachesTheCallerAsATimeoutNotAsABlockedAddress(): void
+    {
+        $guard = new OutboundGuard(fn () => throw new OutboundFailure('site_timeout'));
+
+        $this->expectExceptionObject(new OutboundFailure('site_timeout'));
+        $guard->resolve('erp.example.com');
+    }
+
+    private function startServer(): int
+    {
+        $socket = stream_socket_server('tcp://127.0.0.1:0');
+        $port   = (int) substr(stream_socket_get_name($socket, false), strrpos(stream_socket_get_name($socket, false), ':') + 1);
+        fclose($socket);
+
+        $process = proc_open([PHP_BINARY, '-S', '127.0.0.1:' . $port, __DIR__ . '/Support/body-router.php'], [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
+        $this->assertIsResource($process);
+        $this->server = $process;
+        for ($i = 0; $i < 50; $i++) {
+            if ($c = @fsockopen('127.0.0.1', $port)) {
+                fclose($c);
+
+                return $port;
+            }
+            usleep(100000);
+        }
+        $this->fail('The local test server did not start.');
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->server) {
+            proc_terminate($this->server);
+            proc_close($this->server);
+        }
+        parent::tearDown();
     }
 
     public function testEveryCallChecksAgainAndNothingIsCached(): void

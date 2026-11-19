@@ -87,8 +87,8 @@ export default class ErpnextTabComponent extends Component {
         return this.showForm && !this.replacing;
     }
 
-    get badgeKey() {
-        return `alvora-erpnext-link.badge.${this.state}`;
+    get badgeText() {
+        return this.intl.t('alvora-erpnext-link.badge.tab', { status: this.intl.t(`alvora-erpnext-link.badge.${this.state}`) });
     }
 
     get badgeClass() {
@@ -164,7 +164,13 @@ export default class ErpnextTabComponent extends Component {
     }
 
     get previousKept() {
-        return this.state === 'attention' && this.status.has_previous && this.status.step < 5 && this.alertCode !== 'key_invalid';
+        return (
+            this.state === 'attention' &&
+            this.status.has_previous &&
+            this.status.step < 5 &&
+            this.alertCode !== 'key_invalid' &&
+            !(this.alertCode === 'interrupted' && this.status.step === 4)
+        );
     }
 
     alertFor(code) {
@@ -193,9 +199,12 @@ export default class ErpnextTabComponent extends Component {
     }
 
     // While a run is going: ask every 2 seconds, stop when it ends, when the browser tab is hidden or when this tab is left.
+    // After a failed call the wait doubles (2, 4, 8 ... capped at 30 seconds) and goes back to 2 once a call succeeds.
     @task({ restartable: true }) *poll() {
+        const interval = this.args.pollInterval ?? 2000;
+        let wait = interval;
         while (this.isConnecting) {
-            yield timeout(this.args.pollInterval ?? 2000);
+            yield timeout(wait);
             if (document.hidden) {
                 this.paused = true;
 
@@ -203,8 +212,10 @@ export default class ErpnextTabComponent extends Component {
             }
             const response = yield call(this.fetch, 'GET', this.path);
             if (!response.ok) {
+                wait = Math.min(wait * 2, Math.max(interval, 30000));
                 continue;
             }
+            wait = interval;
             this.setStatus(response.json);
         }
         this.finished();

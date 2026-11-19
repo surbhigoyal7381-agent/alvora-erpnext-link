@@ -24,10 +24,10 @@ class TestEngineerTier1Test extends IntegrationTestCase
         [$b]       = $this->makeClient('B');
         [, $token] = $this->makeStaff();
 
-        $this->connect($a, $token, $this->connectBody('ZZSENTINEL-a', 'https://erp.a-example.com'))->assertStatus(202);
+        $this->connect($a, $token, $this->connectBody('ZZSENTINEL-a', "https://a.{$this->host}"))->assertStatus(202);
         $forA     = $this->erpnext->lastConnectBody();
         $mark     = count($this->erpnext->requests);
-        $this->connect($b, $token, $this->connectBody('ZZSENTINEL-b', 'https://erp.b-example.com'))->assertStatus(202);
+        $this->connect($b, $token, $this->connectBody('ZZSENTINEL-b', "https://b.{$this->host}"))->assertStatus(202);
         $forB     = $this->erpnext->lastConnectBody();
 
         $this->assertNotSame($forA['api_key'], $forB['api_key'], 'AC-78: two clients never share a key');
@@ -77,15 +77,16 @@ class TestEngineerTier1Test extends IntegrationTestCase
         $this->connect($acme, $token)->assertStatus(202);
         $old = ErpnextConnection::forCompany($acme->uuid)->api_credential_uuid;
 
-        // The old key is revoked first inside the cut-over; the row update that follows fails once.
+        // The cut-over is one UPDATE that promotes the new pair; it is refused once, before it writes anything.
         $armed = true;
-        DB::listen(function ($query) use (&$armed) {
-            if ($armed && str_starts_with($query->sql, 'update `alvora_erpnext_connections`') && in_array(5, $query->bindings, true)) {
+        $this->app['events']->listen('eloquent.updating: ' . ErpnextConnection::class, function ($row) use (&$armed) {
+            if ($armed && $row->step === 5 && $row->isDirty('api_credential_uuid')) {
                 $armed = false;
                 throw new \RuntimeException('disk full during cut-over');
             }
         });
         $this->connect($acme, $token);
+        $this->assertFalse($armed, 'the cut-over was reached and refused');
         $armed = false;
 
         $this->assertNotNull(ApiCredential::where('uuid', $old)->first(), 'AC-56: the old key was not revoked by a cut-over that did not finish');
